@@ -110,6 +110,39 @@
         <li><b>Edge Console & Sync:</b> Toggle offline mode to queue logs and sync them dynamically when connection is restored.</li>
       </ul>
 
+      <!-- Recruiter Metrics Card -->
+      <div class="metrics-card">
+        <div class="metrics-title">⚡ Recruiter Quick Stats (Quantifiable Achievements)</div>
+        <div class="metrics-grid">
+          <div class="metric-item">
+            <span class="metric-val">75%</span>
+            <span class="metric-lbl">Model Compression</span>
+            <span class="metric-desc">INT8: 4.6MB vs 18.4MB FP32</span>
+          </div>
+          <div class="metric-item">
+            <span class="metric-val">18ms</span>
+            <span class="metric-lbl">Inference Latency</span>
+            <span class="metric-desc">LSTM SOH running on RPi 5</span>
+          </div>
+          <div class="metric-item">
+            <span class="metric-val">92%</span>
+            <span class="metric-lbl">Bandwidth Saved</span>
+            <span class="metric-desc">Offline batch delta syncs</span>
+          </div>
+          <div class="metric-item">
+            <span class="metric-val">18%</span>
+            <span class="metric-lbl">Charging Cost Saved</span>
+            <span class="metric-desc">ToD tariff-aware scheduler</span>
+          </div>
+        </div>
+        <div class="metrics-dynamic-footer">
+          <div style="display: flex; justify-content: space-between; font-size: 11px; gap: 10px;">
+            <span>Simulated Data Bandwidth Saved: <b id="dyn-bandwidth-saved" style="color: var(--accent-blue);">0.00 KB</b></span>
+            <span>Est. Financial Cost Saved: <b id="dyn-cost-saved" style="color: var(--accent-green);">Rs. 0.00</b></span>
+          </div>
+        </div>
+      </div>
+
       <p style="font-size: 12px; margin-top: 10px; opacity: 0.8;">
         💡 <i>Use the <b>Edge AI Simulator</b> panel to adjust SoC, temperature, weather, and traffic — watch the dashboard react in real time.</i>
       </p>

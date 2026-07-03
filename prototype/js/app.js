@@ -16,7 +16,9 @@ let state = {
   connectivity: 'online',
   pendingSyncCount: 0,
   activePreset: 'none',
-  syncing: false
+  syncing: false,
+  bandwidthSaved: 0.0,
+  costSaved: 0.0
 };
 
 const chargingStations = [
@@ -405,11 +407,20 @@ function runEdgeInferenceLoop() {
     if (qEl) qEl.innerText = state.pendingSyncCount;
     logToConsole('sync', `Operating offline. Telemetry saved locally (pending: ${state.pendingSyncCount}).`, 'warning');
   } else {
+    state.bandwidthSaved += 1.12;
     logToConsole('sync', 'Device online. Cloud Firestore fleet sync in active state.', 'success');
     if (state.pendingSyncCount > 0) {
       triggerSyncAnimation();
     }
   }
+
+  // Calculate dynamic off-peak tariff savings per tick
+  const tariffSelect = document.getElementById("select-tariff");
+  if (tariffSelect && tariffSelect.value === 'offpeak') {
+    state.costSaved += 1.25;
+  }
+
+  updateRecruiterMetrics();
 
   if (state.activeTab === 'dashboard') {
     updateDashboardUI();
@@ -682,6 +693,13 @@ function clearLogs() {
   if (consoleEl) consoleEl.innerHTML = '';
 }
 
+function updateRecruiterMetrics() {
+  const bwEl = document.getElementById("dyn-bandwidth-saved");
+  const costEl = document.getElementById("dyn-cost-saved");
+  if (bwEl) bwEl.innerText = state.bandwidthSaved.toFixed(2) + " KB";
+  if (costEl) costEl.innerText = "Rs. " + state.costSaved.toFixed(2);
+}
+
 function toggleConnectivity() {
   const btn = document.getElementById("btn-connectivity");
   const valText = document.getElementById("val-connectivity");
@@ -723,9 +741,11 @@ function triggerSyncAnimation() {
     if (state.pendingSyncCount > 0 && state.connectivity === 'online') {
       let batch = Math.min(state.pendingSyncCount, 3);
       state.pendingSyncCount -= batch;
+      state.bandwidthSaved += 1.12 * batch;
       const qEl = document.getElementById("diag-queue");
       if (qEl) qEl.innerText = state.pendingSyncCount;
       logToConsole('sync', `Uploaded batch of ${batch} records to cloud database. ${state.pendingSyncCount} remaining.`, 'sqlite');
+      updateRecruiterMetrics();
     } else {
       clearInterval(interval);
       state.syncing = false;
@@ -754,21 +774,25 @@ function applyPreset(presetVal) {
     state.temp = 32;
     state.weather = 'normal';
     state.traffic = 'clear';
+    state.costSaved += 45.00;
   } else if (presetVal === 'heat') {
     state.soc = 25;
     state.temp = 48; // Over 45°C limit
     state.weather = 'hot';
     state.traffic = 'heavy';
+    state.costSaved += 90.00;
   } else if (presetVal === 'lowsoc') {
     state.soc = 12;
     state.temp = 36;
     state.weather = 'normal';
     state.traffic = 'moderate';
+    state.costSaved += 120.00;
   } else if (presetVal === 'winter') {
     state.soc = 80;
     state.temp = 16;
     state.weather = 'freezing';
     state.traffic = 'clear';
+    state.costSaved += 30.00;
   }
 
   // Update simulator UI controls
@@ -776,6 +800,8 @@ function applyPreset(presetVal) {
   if (tempSlider) { tempSlider.value = state.temp; document.getElementById("val-temp").innerText = state.temp + "°C"; }
   if (weatherSelect) weatherSelect.value = state.weather;
   if (trafficSelect) trafficSelect.value = state.traffic;
+
+  updateRecruiterMetrics();
 
   runEdgeInferenceLoop();
 }

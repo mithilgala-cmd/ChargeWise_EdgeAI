@@ -36,3 +36,7 @@ checkpoint/
 
 # Agent workspaces
 .agents/
+
+# Text info files
+GitHub_Link.txt
+
