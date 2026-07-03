@@ -634,3 +634,53 @@ body {
   align-items: center;
   gap: 10px;
 }
+
+/* Simulator Enhancements */
+.sim-console {
+  background: #050811;
+  border: 1px solid #1E293B;
+  border-radius: 10px;
+  height: 120px;
+  overflow-y: auto;
+  font-family: 'Courier New', Courier, monospace;
+  font-size: 9px;
+  padding: 8px;
+  line-height: 1.4;
+  color: #38BDF8;
+  margin-top: 6px;
+  box-shadow: inset 0 2px 8px rgba(0, 0, 0, 0.8);
+}
+
+.sim-console::-webkit-scrollbar {
+  width: 4px;
+}
+
+.sim-console::-webkit-scrollbar-thumb {
+  background: #1E293B;
+  border-radius: 2px;
+}
+
+.console-log {
+  margin-bottom: 3px;
+  word-break: break-all;
+}
+
+.console-log.info { color: #64748B; }
+.console-log.success { color: #10B981; }
+.console-log.warning { color: #F59E0B; }
+.console-log.error { color: #EF4444; }
+.console-log.sqlite { color: #3B82F6; }
+
+#btn-connectivity {
+  transition: all 0.2s ease;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+#btn-connectivity.offline {
+  background: rgba(239, 68, 68, 0.15);
+  border-color: rgba(239, 68, 68, 0.3);
+  color: var(--accent-red);
+}
+

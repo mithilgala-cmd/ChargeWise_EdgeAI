@@ -12,7 +12,11 @@ let state = {
   sohHistory: [96.2, 95.9, 95.7, 95.4, 95.1, 94.8],
   voltages: [4.12, 4.11, 4.13, 3.85, 4.12, 4.12, 4.11, 4.12],
   map: null,
-  markers: []
+  markers: [],
+  connectivity: 'online',
+  pendingSyncCount: 0,
+  activePreset: 'none',
+  syncing: false
 };
 
 const chargingStations = [
@@ -26,6 +30,9 @@ document.addEventListener("DOMContentLoaded", () => {
   initUI();
   switchTab('dashboard');
   initSimulatorControls();
+  logToConsole('system', 'Initializing ChargeWise EdgeAI Engine...', 'info');
+  logToConsole('system', 'SQLite Local DB circular buffer created.', 'sqlite');
+  logToConsole('system', 'TFLite Models loaded: LSTM-SOH, XGB-Tariff.', 'info');
   runEdgeInferenceLoop();
 });
 
@@ -87,8 +94,19 @@ function initUI() {
       </div>
     </div>
 
-    <div class="simulator-panel">
-      <div class="sim-title">Edge AI Simulator</div>
+    <div class="simulator-panel" style="gap: 12px; padding: 20px;">
+      <div class="sim-title" style="padding-bottom: 6px; margin-bottom: 2px;">Edge AI Simulator</div>
+
+      <div class="slider-group">
+        <div class="slider-header"><span>Simulation Scenario Preset</span></div>
+        <select class="select-field" id="select-preset" onchange="applyPreset(this.value)" style="border-color: rgba(59, 130, 246, 0.4); font-weight: 600;">
+          <option value="none">-- Custom Simulation --</option>
+          <option value="cruise">NH-48 Standard Cruise (Normal)</option>
+          <option value="heat">Summer Heat Abuse (AIS 156 Guardrail Alert)</option>
+          <option value="lowsoc">Low SoC Charge Stop (Lonavala Stop)</option>
+          <option value="winter">Winter Morning Start (Cold Ambient)</option>
+        </select>
+      </div>
 
       <div class="slider-group">
         <div class="slider-header">
@@ -135,12 +153,28 @@ function initUI() {
         </select>
       </div>
 
-      <div style="font-size: 11px; color: var(--text-secondary); border-top: 1px solid var(--card-border); padding-top: 10px; margin-top: 4px; line-height: 1.7;">
+      <div class="slider-group" style="border-top: 1px solid var(--card-border); padding-top: 8px;">
+        <div class="slider-header" style="align-items: center;">
+          <span>Connectivity</span>
+          <span class="slider-val" id="val-connectivity" style="color: var(--accent-green);">ONLINE</span>
+        </div>
+        <button class="btn" id="btn-connectivity" onclick="toggleConnectivity()" style="margin-top: 4px; padding: 6px; font-size: 10px; border-radius: 8px; background: rgba(16, 185, 129, 0.15); border: 1px solid rgba(16, 185, 129, 0.3); color: var(--accent-green);">
+          Toggle Offline (Simulate Ghats)
+        </button>
+      </div>
+
+      <div style="font-size: 10px; color: var(--text-secondary); border-top: 1px solid var(--card-border); padding-top: 8px; line-height: 1.6;">
         <span style="font-weight: 700; color: var(--accent-green);">Edge Diagnostics</span><br>
-        Inference Latency: <span id="diag-latency">18 ms</span><br>
-        Model Version: 2.1.8-quant (INT8)<br>
-        Standards: ARAI AIS 156 Phase 2<br>
-        SQLite Queue: 0 pending
+        Latency: <span id="diag-latency">18 ms</span> &nbsp;|&nbsp; SQLite Queue: <span id="diag-queue">0</span> pending<br>
+        Quant: INT8 (RPi 5 Optimized) &nbsp;|&nbsp; Compliance: AIS 156
+      </div>
+
+      <div style="border-top: 1px solid var(--card-border); padding-top: 8px;">
+        <div style="font-size: 10px; font-weight: 700; color: var(--accent-blue); margin-bottom: 2px; display: flex; justify-content: space-between; align-items: center;">
+          <span>Live Edge Log Console</span>
+          <span style="font-size: 8px; cursor: pointer; color: var(--text-secondary);" onclick="clearLogs()">Clear</span>
+        </div>
+        <div id="sim-console" class="sim-console"></div>
       </div>
     </div>
   `;
@@ -317,6 +351,10 @@ function getTabHTML(tabId) {
 }
 
 function adjustSim(key, val) {
+  state.activePreset = 'none';
+  const presetSelect = document.getElementById("select-preset");
+  if (presetSelect) presetSelect.value = 'none';
+
   if (key === 'soc') {
     state.soc = parseFloat(val);
     document.getElementById("val-soc").innerText = val + "%";
@@ -343,14 +381,34 @@ function runEdgeInferenceLoop() {
 
   state.range = Math.round(state.soc * rangeFactor);
 
+  logToConsole('model', 'Running TFLite LSTM SOH and XGBoost Tariff inference...', 'info');
+
   if (state.temp > 45) {
     state.sohHistory = [96.2, 95.8, 95.5, 95.0, 94.4, 93.6];
     state.soh = 93.6;
     state.voltages = [4.12, 4.08, 4.14, 3.75, 4.11, 4.09, 4.02, 4.10];
+    logToConsole('guardrail', `AIS 156 Violation! Battery Temp ${state.temp}°C exceeds 45°C safety limit.`, 'error');
+    logToConsole('guardrail', 'Cell group 4 imbalance exceeded 150mV threshold. Throttling active.', 'warning');
+    logToConsole('model', 'Anomaly head reports runaway hazard risk > 85%.', 'error');
   } else {
     state.sohHistory = [96.2, 95.9, 95.7, 95.4, 95.1, 94.8];
     state.soh = 94.8;
     state.voltages = [4.12, 4.11, 4.13, 3.85, 4.12, 4.12, 4.11, 4.12];
+    logToConsole('guardrail', `Thermal state normal (${state.temp}°C). Cells balanced.`, 'success');
+  }
+
+  logToConsole('sqlite', `Written telemetry row: SoC ${Math.round(state.soc)}%, SOH ${state.soh}%, Temp ${state.temp}°C.`, 'sqlite');
+
+  if (state.connectivity === 'offline') {
+    state.pendingSyncCount++;
+    const qEl = document.getElementById("diag-queue");
+    if (qEl) qEl.innerText = state.pendingSyncCount;
+    logToConsole('sync', `Operating offline. Telemetry saved locally (pending: ${state.pendingSyncCount}).`, 'warning');
+  } else {
+    logToConsole('sync', 'Device online. Cloud Firestore fleet sync in active state.', 'success');
+    if (state.pendingSyncCount > 0) {
+      triggerSyncAnimation();
+    }
   }
 
   if (state.activeTab === 'dashboard') {
@@ -597,7 +655,127 @@ function initSimulatorControls() {
 }
 
 function acceptRecommendation() {
+  logToConsole('user', 'Driver ACCEPTED charging recommendation at Jio-bp Lonavala.', 'success');
+  logToConsole('sync', 'Queued recommendation feedback for cloud upload (ACCEPTED).', 'sqlite');
   alert("Route updated — stopping at Jio-bp Pulse, Lonavala in 45 km.");
   state.soc = 80;
+  runEdgeInferenceLoop();
+}
+
+/* Simulator Enhancements Event Handlers */
+function logToConsole(module, message, level = 'info') {
+  const consoleEl = document.getElementById("sim-console");
+  if (!consoleEl) return;
+
+  const time = new Date().toLocaleTimeString('en-US', { hour12: false });
+  const prefix = `[${time}] [${module.toUpperCase()}] `;
+  const div = document.createElement("div");
+  div.className = `console-log ${level}`;
+  div.innerText = prefix + message;
+
+  consoleEl.appendChild(div);
+  consoleEl.scrollTop = consoleEl.scrollHeight;
+}
+
+function clearLogs() {
+  const consoleEl = document.getElementById("sim-console");
+  if (consoleEl) consoleEl.innerHTML = '';
+}
+
+function toggleConnectivity() {
+  const btn = document.getElementById("btn-connectivity");
+  const valText = document.getElementById("val-connectivity");
+
+  if (state.connectivity === 'online') {
+    state.connectivity = 'offline';
+    if (valText) {
+      valText.innerText = 'OFFLINE';
+      valText.style.color = 'var(--accent-red)';
+    }
+    if (btn) {
+      btn.innerText = 'Restore Sync';
+      btn.classList.add('offline');
+    }
+    logToConsole('system', 'Cellular signal lost in Ghats. Switched to LOCAL-ONLY mode.', 'warning');
+  } else {
+    state.connectivity = 'online';
+    if (valText) {
+      valText.innerText = 'ONLINE';
+      valText.style.color = 'var(--accent-green)';
+    }
+    if (btn) {
+      btn.innerText = 'Toggle Offline (Simulate Ghats)';
+      btn.classList.remove('offline');
+    }
+    logToConsole('system', 'Cellular connection restored. Synchronizing edge buffers...', 'success');
+    if (state.pendingSyncCount > 0) {
+      triggerSyncAnimation();
+    }
+  }
+}
+
+function triggerSyncAnimation() {
+  if (state.syncing) return;
+  state.syncing = true;
+  logToConsole('sync', `Beginning upload of ${state.pendingSyncCount} queued offline telemetry logs...`, 'info');
+
+  let interval = setInterval(() => {
+    if (state.pendingSyncCount > 0 && state.connectivity === 'online') {
+      let batch = Math.min(state.pendingSyncCount, 3);
+      state.pendingSyncCount -= batch;
+      const qEl = document.getElementById("diag-queue");
+      if (qEl) qEl.innerText = state.pendingSyncCount;
+      logToConsole('sync', `Uploaded batch of ${batch} records to cloud database. ${state.pendingSyncCount} remaining.`, 'sqlite');
+    } else {
+      clearInterval(interval);
+      state.syncing = false;
+      if (state.connectivity === 'online') {
+        logToConsole('sync', 'Sync complete. SQLite buffer clean.', 'success');
+      } else {
+        logToConsole('sync', 'Sync paused. Waiting for connection.', 'warning');
+      }
+    }
+  }, 600);
+}
+
+function applyPreset(presetVal) {
+  state.activePreset = presetVal;
+  if (presetVal === 'none') return;
+
+  logToConsole('system', `Loading CAN scenario: ${presetVal}`, 'info');
+
+  const socSlider = document.getElementById("slider-soc");
+  const tempSlider = document.getElementById("slider-temp");
+  const weatherSelect = document.getElementById("select-weather");
+  const trafficSelect = document.getElementById("select-traffic");
+
+  if (presetVal === 'cruise') {
+    state.soc = 65;
+    state.temp = 32;
+    state.weather = 'normal';
+    state.traffic = 'clear';
+  } else if (presetVal === 'heat') {
+    state.soc = 25;
+    state.temp = 48; // Over 45°C limit
+    state.weather = 'hot';
+    state.traffic = 'heavy';
+  } else if (presetVal === 'lowsoc') {
+    state.soc = 12;
+    state.temp = 36;
+    state.weather = 'normal';
+    state.traffic = 'moderate';
+  } else if (presetVal === 'winter') {
+    state.soc = 80;
+    state.temp = 16;
+    state.weather = 'freezing';
+    state.traffic = 'clear';
+  }
+
+  // Update simulator UI controls
+  if (socSlider) { socSlider.value = state.soc; document.getElementById("val-soc").innerText = state.soc + "%"; }
+  if (tempSlider) { tempSlider.value = state.temp; document.getElementById("val-temp").innerText = state.temp + "°C"; }
+  if (weatherSelect) weatherSelect.value = state.weather;
+  if (trafficSelect) trafficSelect.value = state.traffic;
+
   runEdgeInferenceLoop();
 }

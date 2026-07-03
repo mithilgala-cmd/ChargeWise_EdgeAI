@@ -30,3 +30,7 @@ checkpoint/
 
 # Logs
 *.log
+
+# Databases
+*.db
+
