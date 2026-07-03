@@ -34,3 +34,5 @@ checkpoint/
 # Databases
 *.db
 
+# Agent workspaces
+.agents/

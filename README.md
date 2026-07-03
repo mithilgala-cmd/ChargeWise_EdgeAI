@@ -22,7 +22,7 @@ ChargeWise_EdgeAI/
 │   ├── model_design.md        — Feature engineering, LSTM vs XGBoost evaluation, TFLite deployment
 │   ├── project_management.md  — 12-week Gantt, milestone targets, risk matrix
 │   └── market_research.md     — Competitive analysis vs Tata ZConnect, Ather, Jio-bp Pulse
-├── diagrams/                  — SVG architecture and workflow diagrams
+├── architecture/              — SVG architecture and workflow diagrams
 │   ├── system_architecture.svg
 │   ├── system_workflow.svg
 │   ├── ai_pipeline.svg
@@ -52,13 +52,40 @@ ChargeWise_EdgeAI/
 
 ---
 
-## Running the Prototype
+## Running the Prototype & Simulator
 
-1. Open `prototype/index.html` in Chrome or Edge.
-2. Use the **Edge AI Simulator** panel on the right to adjust battery SoC, temperature, weather, traffic density, and MSEDCL tariff slot.
-3. Watch the dashboard, route planner, and safety alerts react in real time — simulating what the on-vehicle edge engine would compute.
+The ChargeWise EdgeAI prototype consists of two components: an interactive HTML/JS dashboard mockup and a Python-based edge processing loop simulator.
 
-No build step, no server. It's pure HTML + JS.
+### 1. Web-Based Interactive Dashboard Mockup
+Open `prototype/index.html` in Chrome, Edge, or Safari to run the mockup. The prototype dashboard features:
+- **Simulation Scenario Preset**: A dropdown to immediately load standard vehicle conditions:
+  - **NH-48 Standard Cruise (Normal)**: Baseline driving conditions (65% SoC, 32°C battery, clear traffic).
+  - **Summer Heat Abuse (AIS 156 Guardrail Alert)**: Heavy congestion under extreme weather triggering safety overrides (25% SoC, 48°C battery, hot weather).
+  - **Low SoC Charge Stop (Lonavala Stop)**: Running low on charge in moderate traffic (12% SoC, 36°C battery).
+  - **Winter Morning Start (Cold Ambient)**: High SoC start under freezing conditions (80% SoC, 16°C battery).
+- **Connectivity Toggle (Simulate cellular dropouts in the Ghats)**: Toggle between ONLINE and OFFLINE mode.
+  - While **OFFLINE**, incoming CAN telemetry logs are queued locally in the SQLite database circular buffer.
+  - Switching back to **ONLINE** triggers background synchronization, uploading pending records to the cloud database in batches of 3 records every 600ms until the queue is clear.
+- **Live Edge Log Console**: A real-time terminal display presenting:
+  - Local SQLite database writes and buffer maintenance.
+  - TFLite quantized models' inferences (LSTM state-of-health estimation and XGBoost electricity tariff forecast).
+  - Thermal safety warning alerts and AIS 156 Phase 2 control overrides (such as throttling C-rate or emergency cooling stops).
+
+No server or build process is required for the web prototype; it runs entirely local as a client-side HTML + CSS + JS package.
+
+### 2. Python Edge Simulator Script
+The repository contains a Python script that simulates the CAN-bus data processing loop running locally on an on-vehicle edge hardware target (e.g. Raspberry Pi 5 or Jetson Nano).
+
+To execute the Python edge simulator, run:
+```powershell
+python scripts/edge_simulator.py
+```
+This script will initialize local SQLite tables, insert seed users, vehicles, and charging stations, and then run a 12-tick telemetry logging loop simulating temperature rises and cellular dropouts.
+
+To run the unit tests verifying the AIS 156 compliance safety engine, run:
+```powershell
+python -m unittest tests/test_safety_engine.py
+```
 
 ---
 
